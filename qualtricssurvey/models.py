@@ -17,7 +17,7 @@ class QualtricsSurveyModelMixin:
         'survey_id',
         'your_university',
         'link_text',
-        'param_name',
+        'extra_params',
         'message',
     ]
     display_name = String(
@@ -44,13 +44,14 @@ class QualtricsSurveyModelMixin:
             'above the link to your survey.'
         ),
     )
-    param_name = String(
-        display_name=_('Param Name:'),
-        default='a',
+    extra_params = String(
+        display_name=_('Extra Parameters:'),
+        default='',
         scope=Scope.settings,
         help=_(
-            'This is the name for the User ID parameter in the url. '
-            'If blank, User ID is ommitted from the url.'
+            'Additional query parameters to include in the survey URL. '
+            'Format: key1=value1&key2=value2. '
+            'If blank, no extra parameters are added.'
         ),
     )
     survey_id = String(
@@ -65,18 +66,17 @@ class QualtricsSurveyModelMixin:
     )
     your_university = String(
         display_name=_('Your University:'),
-        default='stanforduniversity',
+        default='',
         scope=Scope.settings,
-        help=_('This is the name of your university.'),
+        help=_(
+            "The subdomain for your university's Qualtrics account "
+            "(e.g.'stanforduniversity'). "
+            "If left blank, the system-wide default is used."
+        ),
     )
-
-    def get_anon_id(self):
-        """
-        Return an anonymous user id
-        """
-        try:
-            user_id = self.xmodule_runtime.anonymous_student_id
-        except AttributeError:
-            user_id = -1
-        return user_id
-    # pylint: enable=no-member
+    # Deprecated: kept for backward compatibility with existing course data.
+    # Not included in editable_fields so it no longer appears in Studio.
+    param_name = String(
+        default='a',
+        scope=Scope.settings,
+    )
