@@ -11,7 +11,7 @@ from xblock.field_data import DictFieldData
 from qualtricssurvey.xblocks import QualtricsSurvey
 
 
-def mock_an_xblock(field_overrides=None, user_service=None):
+def mock_an_xblock(field_overrides=None, user_service=None, xblock_settings=None):
     """
     Create and return an instance of the XBlock
     """
@@ -23,6 +23,9 @@ def mock_an_xblock(field_overrides=None, user_service=None):
     i18n_service.ugettext.side_effect = lambda text: text
     i18n_service.gettext.side_effect = lambda text: text
 
+    settings_service = mock.Mock()
+    settings_service.get_settings_bucket.return_value = xblock_settings or {}
+
     def local_resource_url(_block, _path):
         return 'http://example.org/resource'
 
@@ -33,6 +36,8 @@ def mock_an_xblock(field_overrides=None, user_service=None):
             return user_service
         if service_name == 'i18n':
             return i18n_service
+        if service_name == 'settings':
+            return settings_service
         raise Exception('Service not available')
 
     runtime.service = mock.Mock(side_effect=service)
@@ -60,29 +65,41 @@ class TestRender(unittest.TestCase):
         self.assertNotEqual('', html)
         self.assertIn('qualtricssurvey_block', html)
 
-    def test_student_view(self):
+    def test_student_view_defaults(self):
         """
-        Checks the student view using the anonymous user fallback when
-        runtime user services are unavailable.
+        Checks the default student view with no XBLOCK_SETTINGS configured.
+        Since param_name defaults to 'a' and no USER_QUERY_PARAMS is set,
+        the legacy fallback sends {param_name: anonymous_id}.
         """
         xblock = self.xblock
         fragment = xblock.student_view()
         content = fragment.content
         self.assertIn('Begin Survey', content)
         self.assertIn('target="_blank"', content)
-        self.assertIn(
-            'href="https://pennstate.qualtrics.com/jfe/form/Enter your survey '
-            'ID here.?',
-            content
-        )
-        self.assertIn('example_param_1=example_value_1', content)
-        self.assertIn('example_param_2=example_value_2', content)
-        self.assertIn('?edxuid=anon-user-id', content)
+        self.assertIn('?a=anon-user-id', content)
         self.assertIn(xblock.message, content)
+
+    def test_student_view_with_settings(self):
+        """
+        When USER_QUERY_PARAMS is configured in XBLOCK_SETTINGS,
+        uses the configured mapping instead of legacy param_name.
+        """
+        xblock = mock_an_xblock(
+            xblock_settings={
+                'USER_QUERY_PARAMS': {
+                    'edxuid': 'user_id',
+                    'email': 'email',
+                },
+            },
+        )
+        content = xblock.student_view().content
+        self.assertIn('?edxuid=anon-user-id', content)
+        self.assertNotIn('a=', content)
 
     def test_student_view_with_user_service(self):
         """
-        Checks the student view when the runtime provides user information.
+        Checks the student view when the runtime provides user information
+        and USER_QUERY_PARAMS is configured.
         """
         user = mock.Mock()
         user.user_id = None
@@ -95,6 +112,12 @@ class TestRender(unittest.TestCase):
         xblock = mock_an_xblock(
             field_overrides={'extra_params': 'foo=bar&baz='},
             user_service=user_service,
+            xblock_settings={
+                'USER_QUERY_PARAMS': {
+                    'edxuid': 'user_id',
+                    'email': 'email',
+                },
+            },
         )
 
         content = xblock.student_view().content
@@ -103,6 +126,139 @@ class TestRender(unittest.TestCase):
         self.assertIn('&amp;email=user%40example.com', content)
         self.assertIn('&amp;foo=bar', content)
         self.assertIn('&amp;baz=', content)
+
+    def test_custom_user_query_params(self):
+        """
+        Checks that USER_QUERY_PARAMS from XBLOCK_SETTINGS controls which
+        user attributes are sent and under what parameter names.
+        """
+        user = mock.Mock()
+        user.user_id = '99'
+        user.opt_attrs = {'edx-platform.username': 'jdoe'}
+        user.emails = ['j@example.com']
+        user_service = mock.Mock()
+        user_service.get_current_user.return_value = user
+        xblock = mock_an_xblock(
+            user_service=user_service,
+            xblock_settings={
+                'USER_QUERY_PARAMS': {
+                    'uid': 'user_id',
+                    'uname': 'username',
+                },
+            },
+        )
+
+        content = xblock.student_view().content
+
+        self.assertIn('uid=99', content)
+        self.assertIn('uname=jdoe', content)
+        self.assertNotIn('email=', content)  # not in the mapping
+        self.assertNotIn('edxuid=', content)  # overridden
+
+    def test_empty_user_query_params(self):
+        """
+        Setting USER_QUERY_PARAMS to empty dict disables all user params.
+        """
+        xblock = mock_an_xblock(
+            xblock_settings={'USER_QUERY_PARAMS': {}},
+        )
+
+        content = xblock.student_view().content
+
+        self.assertNotIn('edxuid=', content)
+        self.assertNotIn('email=', content)
+        self.assertNotIn('?', content)
+
+    def test_unknown_attribute_key_skipped(self):
+        """
+        An unrecognized attribute key in USER_QUERY_PARAMS is silently skipped.
+        """
+        xblock = mock_an_xblock(
+            xblock_settings={
+                'USER_QUERY_PARAMS': {
+                    'x': 'nonexistent_attribute',
+                    'edxuid': 'user_id',
+                },
+            },
+        )
+
+        content = xblock.student_view().content
+
+        self.assertNotIn('x=', content)
+        self.assertIn('edxuid=anon-user-id', content)
+
+    def test_param_name_backward_compat(self):
+        """
+        When no USER_QUERY_PARAMS is configured and the legacy param_name
+        field has a value, fall back to {param_name: anonymous_id}.
+        """
+        xblock = mock_an_xblock(
+            field_overrides={'param_name': 'a'},
+        )
+
+        content = xblock.student_view().content
+
+        self.assertIn('?a=anon-user-id', content)
+        self.assertNotIn('edxuid=', content)
+
+    def test_param_name_overridden_by_settings(self):
+        """
+        When USER_QUERY_PARAMS is set in XBLOCK_SETTINGS, param_name is
+        ignored even if it has a value.
+        """
+        xblock = mock_an_xblock(
+            field_overrides={'param_name': 'a'},
+            xblock_settings={
+                'USER_QUERY_PARAMS': {'edxuid': 'user_id'},
+            },
+        )
+
+        content = xblock.student_view().content
+
+        self.assertIn('edxuid=anon-user-id', content)
+        self.assertNotIn('a=', content)
+
+    def test_university_from_settings_fallback(self):
+        """
+        When your_university field is blank, falls back to DEFAULT_UNIVERSITY
+        from XBLOCK_SETTINGS.
+        """
+        xblock = mock_an_xblock(
+            xblock_settings={'DEFAULT_UNIVERSITY': 'mit'},
+        )
+
+        content = xblock.student_view().content
+
+        self.assertIn('https://mit.qualtrics.com', content)
+
+    def test_university_field_takes_precedence(self):
+        """
+        When your_university field has a value, it takes precedence over
+        DEFAULT_UNIVERSITY from XBLOCK_SETTINGS.
+        """
+        xblock = mock_an_xblock(
+            field_overrides={'your_university': 'stanford'},
+            xblock_settings={'DEFAULT_UNIVERSITY': 'mit'},
+        )
+
+        content = xblock.student_view().content
+
+        self.assertIn('https://stanford.qualtrics.com', content)
+        self.assertNotIn('mit', content)
+
+    def test_extra_params(self):
+        """
+        Checks that extra_params are appended to the survey URL.
+        """
+        xblock = mock_an_xblock(
+            field_overrides={'extra_params': 'course=CS101&term=fall'},
+            xblock_settings={'USER_QUERY_PARAMS': {}},
+        )
+
+        content = xblock.student_view().content
+
+        self.assertIn('course=CS101', content)
+        self.assertIn('term=fall', content)
 
     def test_custom_message(self):
         """

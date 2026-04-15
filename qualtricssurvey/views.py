@@ -15,6 +15,50 @@ except ModuleNotFoundError:
 from .mixins.fragment import XBlockFragmentBuilderMixin
 
 
+DEFAULT_USER_QUERY_PARAMS = {
+    'edxuid': 'user_id',
+    'email': 'email',
+}
+
+
+def _resolve_user_id(xblock, user, runtime):
+    """Resolve the platform user ID with fallbacks."""
+    if user:
+        user_id = user.user_id or user.opt_attrs.get('edx-platform.user_id')
+        if user_id:
+            return user_id
+    return _resolve_anonymous_id(xblock, user, runtime)
+
+
+def _resolve_anonymous_id(xblock, user, runtime):
+    """Resolve the anonymous student ID."""
+    return (
+        getattr(runtime, 'anonymous_student_id', None)
+        or getattr(
+            getattr(xblock, 'xmodule_runtime', None),
+            'anonymous_student_id', None,
+        )
+    )
+
+
+def _resolve_email(xblock, user, runtime):
+    """Resolve the primary email address."""
+    return user.emails[0] if user and user.emails else None
+
+
+def _resolve_username(xblock, user, runtime):
+    """Resolve the platform username."""
+    return user.opt_attrs.get('edx-platform.username') if user else None
+
+
+USER_ATTRIBUTE_RESOLVERS = {
+    'user_id': _resolve_user_id,
+    'anonymous_id': _resolve_anonymous_id,
+    'email': _resolve_email,
+    'username': _resolve_username,
+}
+
+
 class QualtricsSurveyViewMixin(
         XBlockFragmentBuilderMixin,
         StudioEditableXBlockMixin,
@@ -32,22 +76,27 @@ class QualtricsSurveyViewMixin(
         """
         context = context or {}
         context = dict(context)
-        query_params = self._user_query_params()
+        settings = self.get_xblock_settings(default={})
+        query_params = self._user_query_params(settings)
         query_params.extend(self._extra_query_params())
         query_string = ''
         if query_params:
             query_string = f"?{urlencode(query_params, doseq=True)}"
+        university = (
+            self.your_university
+            or settings.get('DEFAULT_UNIVERSITY', '')
+        )
         context.update({
             'xblock_id': str(self.scope_ids.usage_id),
             'survey_id': self.survey_id,
-            'your_university': self.your_university,
+            'your_university': university,
             'link_text': self.link_text,
             'query_string': query_string,
             'message': self.message,
         })
         return context
 
-    def _user_query_params(self):
+    def _user_query_params(self, settings):
         """
         Return query parameters derived from the current user.
         """
@@ -63,30 +112,19 @@ class QualtricsSurveyViewMixin(
 
         user = user_service.get_current_user() if user_service else None
 
-        opt_attrs = getattr(user, 'opt_attrs', {}) if user else {}
-        user_id = getattr(user, 'user_id', None)
-        if not user_id and hasattr(opt_attrs, 'get'):
-            user_id = opt_attrs.get('edx-platform.user_id')
+        if 'USER_QUERY_PARAMS' not in settings and self.param_name:
+            # fallback: use the old param_name -> anonymous_id behavior
+            param_map = {self.param_name: 'anonymous_id'}
+        else:
+            param_map = settings.get('USER_QUERY_PARAMS', DEFAULT_USER_QUERY_PARAMS)
 
-        emails = getattr(user, 'emails', []) if user else []
-        primary_email = emails[0] if emails else None
-
-        if not user_id:
-            anonymous_id = getattr(runtime, 'anonymous_student_id', None)
-            if not anonymous_id:
-                xmodule_runtime = getattr(self, 'xmodule_runtime', None)
-                anonymous_id = getattr(
-                    xmodule_runtime,
-                    'anonymous_student_id',
-                    None,
-                )
-            user_id = anonymous_id
-
-        if user_id:
-            params.append(('edxuid', user_id))
-
-        if primary_email:
-            params.append(('email', primary_email))
+        for url_param_name, attribute_key in param_map.items():
+            resolver = USER_ATTRIBUTE_RESOLVERS.get(attribute_key)
+            if not resolver:
+                continue
+            value = resolver(self, user, runtime)
+            if value:
+                params.append((url_param_name, value))
 
         return params
 

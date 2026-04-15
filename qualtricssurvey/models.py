@@ -46,17 +46,12 @@ class QualtricsSurveyModelMixin:
     )
     extra_params = String(
         display_name=_("Extra Parameters:"),
-        default=(
-            "example_param_1=example_value_1&"
-            "example_param_2=example_value_2"
-        ),
+        default="",
         scope=Scope.settings,
         help=_(
-            "Here you can add extra parameters to include in the survey url. "
-            "you can add set of parameters and their value like:"
-            "example_param_1=example_value_1&example_param_2=example_value_2"
-            "Make sure it doesn't start with &"
-            "If blank, extra parameters are ommitted from the url."
+            "Additional query parameters to include in the survey URL. "
+            "Format: key1=value1&key2=value2. "
+            "If blank, no extra parameters are added."
         ),
     )
     survey_id = String(
@@ -70,8 +65,18 @@ class QualtricsSurveyModelMixin:
         ),
     )
     your_university = String(
-        display_name=_("Your University's Qualtrics ID:"),
-        default="pennstate",
+        display_name=_("Your University:"),
+        default="",
         scope=Scope.settings,
-        help=_("This is the id of university in Qualtrics example: pennstate"),
+        help=_(
+            "The subdomain for your university's Qualtrics account "
+            "(e.g.'stanforduniversity'). "
+            "If left blank, the system-wide default is used."
+        ),
+    )
+    # Deprecated: kept for backward compatibility with existing course data.
+    # Not included in editable_fields so it no longer appears in Studio.
+    param_name = String(
+        default='a',
+        scope=Scope.settings,
     )
