@@ -30,7 +30,7 @@ def _resolve_user_id(xblock, user, runtime):
     return _resolve_anonymous_id(xblock, user, runtime)
 
 
-def _resolve_anonymous_id(xblock, user, runtime):
+def _resolve_anonymous_id(xblock, _user, runtime):
     """Resolve the anonymous student ID."""
     return (
         getattr(runtime, 'anonymous_student_id', None)
@@ -41,12 +41,12 @@ def _resolve_anonymous_id(xblock, user, runtime):
     )
 
 
-def _resolve_email(xblock, user, runtime):
+def _resolve_email(_xblock, user, _runtime):
     """Resolve the primary email address."""
     return user.emails[0] if user and user.emails else None
 
 
-def _resolve_username(xblock, user, runtime):
+def _resolve_username(_xblock, user, _runtime):
     """Resolve the platform username."""
     return user.opt_attrs.get('edx-platform.username') if user else None
 
@@ -116,7 +116,9 @@ class QualtricsSurveyViewMixin(
             # fallback: use the old param_name -> anonymous_id behavior
             param_map = {self.param_name: 'anonymous_id'}
         else:
-            param_map = settings.get('USER_QUERY_PARAMS', DEFAULT_USER_QUERY_PARAMS)
+            param_map = settings.get(
+                'USER_QUERY_PARAMS', DEFAULT_USER_QUERY_PARAMS,
+            )
 
         for url_param_name, attribute_key in param_map.items():
             resolver = USER_ATTRIBUTE_RESOLVERS.get(attribute_key)

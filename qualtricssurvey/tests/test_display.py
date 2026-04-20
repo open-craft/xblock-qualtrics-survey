@@ -11,7 +11,9 @@ from xblock.field_data import DictFieldData
 from qualtricssurvey.xblocks import QualtricsSurvey
 
 
-def mock_an_xblock(field_overrides=None, user_service=None, xblock_settings=None):
+def mock_an_xblock(
+    field_overrides=None, user_service=None, xblock_settings=None,
+):
     """
     Create and return an instance of the XBlock
     """
