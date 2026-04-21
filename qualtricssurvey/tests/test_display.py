@@ -70,16 +70,32 @@ class TestRender(unittest.TestCase):
     def test_student_view_defaults(self):
         """
         Checks the default student view with no XBLOCK_SETTINGS configured.
-        Since param_name defaults to 'a' and no USER_QUERY_PARAMS is set,
-        the legacy fallback sends {param_name: anonymous_id}.
+        Since param_name defaults to '' and no USER_QUERY_PARAMS is set,
+        no user params are sent.
         """
         xblock = self.xblock
         fragment = xblock.student_view()
         content = fragment.content
         self.assertIn('Begin Survey', content)
         self.assertIn('target="_blank"', content)
-        self.assertIn('?a=anon-user-id', content)
+        self.assertNotIn('?', content)
         self.assertIn(xblock.message, content)
+
+    def test_blank_param_name_sends_nothing(self):
+        """
+        When param_name is deliberately blank and no USER_QUERY_PARAMS
+        is configured, no user params are sent. This respects a
+        deliberate opt-out of user identification.
+        """
+        xblock = mock_an_xblock(
+            field_overrides={'param_name': ''},
+        )
+
+        content = xblock.student_view().content
+
+        self.assertNotIn('edxuid=', content)
+        self.assertNotIn('anon-user-id', content)
+        self.assertNotIn('?', content)
 
     def test_student_view_with_settings(self):
         """

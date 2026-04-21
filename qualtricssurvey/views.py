@@ -15,12 +15,6 @@ except ModuleNotFoundError:
 from .mixins.fragment import XBlockFragmentBuilderMixin
 
 
-DEFAULT_USER_QUERY_PARAMS = {
-    'edxuid': 'user_id',
-    'email': 'email',
-}
-
-
 def _resolve_user_id(xblock, user, runtime):
     """Resolve the platform user ID with fallbacks."""
     if user:
@@ -112,13 +106,15 @@ class QualtricsSurveyViewMixin(
 
         user = user_service.get_current_user() if user_service else None
 
-        if 'USER_QUERY_PARAMS' not in settings and self.param_name:
-            # fallback: use the old param_name -> anonymous_id behavior
+        if 'USER_QUERY_PARAMS' in settings:
+            param_map = settings['USER_QUERY_PARAMS']
+        elif self.param_name:
+            # Legacy fallback: use the old param_name -> anonymous_id
             param_map = {self.param_name: 'anonymous_id'}
         else:
-            param_map = settings.get(
-                'USER_QUERY_PARAMS', DEFAULT_USER_QUERY_PARAMS,
-            )
+            # No settings configured and param_name is blank, send
+            # nothing.
+            param_map = {}
 
         for url_param_name, attribute_key in param_map.items():
             resolver = USER_ATTRIBUTE_RESOLVERS.get(attribute_key)

@@ -77,6 +77,6 @@ class QualtricsSurveyModelMixin:
     # Deprecated: kept for backward compatibility with existing course data.
     # Not included in editable_fields so it no longer appears in Studio.
     param_name = String(
-        default='a',
+        default='',
         scope=Scope.settings,
     )
