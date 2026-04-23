@@ -70,15 +70,46 @@ Using the Studio editor, you can edit the following fields:
 - survey id
 - university
 - link text
+- extra parameters
 - message
-- parameter name for userid
-
-Note: If you plan to make use of the "Param Name" field to store User ID
-data, you will need to configure your Qualtrics surveys to in turn
-collect that data on Qualtrics’ end.
 
 |image-cms-editor-1|
 |image-cms-editor-2|
+
+
+Configuration
+~~~~~~~~~~~~~
+
+Operators can configure system-wide defaults via ``XBLOCK_SETTINGS`` in
+the Django settings:
+
+.. code-block:: python
+
+    XBLOCK_SETTINGS["QualtricsSurvey"] = {
+        "DEFAULT_UNIVERSITY": "pennstate",
+        "USER_QUERY_PARAMS": {
+            "edxuid": "user_id",
+            "email": "email",
+        },
+    }
+
+``DEFAULT_UNIVERSITY``
+    The default Qualtrics subdomain for your institution. Used when the
+    per-instance university field is left blank.
+
+``USER_QUERY_PARAMS``
+    A mapping of URL parameter names to user attributes. The key is the
+    query parameter name that appears in the survey URL, and the value is
+    the user attribute to resolve. Supported attributes:
+
+    - ``user_id`` -- platform user ID (with fallback to anonymous ID)
+    - ``anonymous_id`` -- anonymous student identifier
+    - ``email`` -- primary email address
+    - ``username`` -- platform username
+
+    If ``USER_QUERY_PARAMS`` is not configured, no user parameters are
+    sent by default. To start sending user data to Qualtrics, operators
+    must explicitly configure this setting.
 
 
 Participants
