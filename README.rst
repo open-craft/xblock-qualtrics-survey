@@ -103,9 +103,13 @@ the Django settings:
     the user attribute to resolve. Supported attributes:
 
     - ``user_id`` -- platform user ID (with fallback to anonymous ID)
-    - ``anonymous_id`` -- anonymous student identifier
+    - ``anonymous_id`` -- course-specific anonymous user ID
     - ``email`` -- primary email address
     - ``username`` -- platform username
+
+    These values come from the XBlock user service. edx-platform only
+    provides them for authenticated users, so any attribute that cannot be
+    resolved (for example, for an anonymous visitor) is left out of the URL.
 
     If ``USER_QUERY_PARAMS`` is not configured, no user parameters are
     sent by default. To start sending user data to Qualtrics, operators

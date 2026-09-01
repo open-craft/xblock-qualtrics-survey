@@ -15,34 +15,36 @@ except ModuleNotFoundError:
 from .mixins.fragment import XBlockFragmentBuilderMixin
 
 
-def _resolve_user_id(xblock, user, runtime):
-    """Resolve the platform user ID with fallbacks."""
-    if user:
-        user_id = user.user_id or user.opt_attrs.get('edx-platform.user_id')
-        if user_id:
-            return user_id
-    return _resolve_anonymous_id(xblock, user, runtime)
+# Keys that edx-platform sets on ``XBlockUser.opt_attrs``. They are only
+# present for authenticated users; anonymous visitors get none of them.
+ATTR_KEY_USER_ID = 'edx-platform.user_id'
+ATTR_KEY_ANONYMOUS_USER_ID = 'edx-platform.anonymous_user_id'
+ATTR_KEY_USERNAME = 'edx-platform.username'
 
 
-def _resolve_anonymous_id(xblock, _user, runtime):
-    """Resolve the anonymous student ID."""
-    return (
-        getattr(runtime, 'anonymous_student_id', None)
-        or getattr(
-            getattr(xblock, 'xmodule_runtime', None),
-            'anonymous_student_id', None,
-        )
-    )
+def _resolve_user_id(user):
+    """Resolve the platform user ID, falling back to the anonymous ID."""
+    return _opt_attr(user, ATTR_KEY_USER_ID) or _resolve_anonymous_id(user)
 
 
-def _resolve_email(_xblock, user, _runtime):
+def _resolve_anonymous_id(user):
+    """Resolve the course-specific anonymous user ID."""
+    return _opt_attr(user, ATTR_KEY_ANONYMOUS_USER_ID)
+
+
+def _resolve_email(user):
     """Resolve the primary email address."""
     return user.emails[0] if user and user.emails else None
 
 
-def _resolve_username(_xblock, user, _runtime):
+def _resolve_username(user):
     """Resolve the platform username."""
-    return user.opt_attrs.get('edx-platform.username') if user else None
+    return _opt_attr(user, ATTR_KEY_USERNAME)
+
+
+def _opt_attr(user, key):
+    """Read an optional attribute from the user, or None if unavailable."""
+    return user.opt_attrs.get(key) if user else None
 
 
 USER_ATTRIBUTE_RESOLVERS = {
@@ -95,15 +97,7 @@ class QualtricsSurveyViewMixin(
         Return query parameters derived from the current user.
         """
         params = []
-        runtime = getattr(self, 'runtime', None)
-        if not runtime:
-            return params
-
-        try:
-            user_service = runtime.service(self, 'user')
-        except Exception:  # pragma: no cover - service may be unavailable
-            user_service = None
-
+        user_service = self.runtime.service(self, 'user')
         user = user_service.get_current_user() if user_service else None
 
         if 'USER_QUERY_PARAMS' in settings:
@@ -120,7 +114,7 @@ class QualtricsSurveyViewMixin(
             resolver = USER_ATTRIBUTE_RESOLVERS.get(attribute_key)
             if not resolver:
                 continue
-            value = resolver(self, user, runtime)
+            value = resolver(user)
             if value:
                 params.append((url_param_name, value))
 
